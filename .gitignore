@@ -16,3 +16,5 @@ trace_enabled.bal
 config.toml
 
 .vscode
+
+logs
