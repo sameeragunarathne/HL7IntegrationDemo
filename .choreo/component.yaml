@@ -1,0 +1,30 @@
+# +required The configuration file schema version
+schemaVersion: 1.2
+
+# +optional Incoming connection details for the component
+endpoints:
+  # +required Unique name for the endpoint.
+  # This name will be used when generating the managed API
+  - name: mllp_listener
+    # +optional Display name for the endpoint.
+    displayName: MLLP Listener
+    # +required Service section has the user service endpoint details
+    service:
+      # +required Numeric port value that gets exposed via the endpoint
+      port: 3000
+    # +required Type of traffic that the endpoint is accepting.
+    # Allowed values: REST, GraphQL, GRPC, TCP, UDP.
+    type: TCP
+    # +optional Network level visibilities of the endpoint.
+    # Accepted values: Project|Organization|Public(Default).
+    networkVisibilities:
+      - Project
+  - name: replay_api
+    displayName: Replay API
+    service:
+      basePath: /replay
+      port: 8080
+    type: REST
+    networkVisibilities:
+      - Project
+    schemaFilePath: openapi.yaml

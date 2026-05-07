@@ -1,0 +1,95 @@
+openapi: 3.0.3
+info:
+  title: Replay API
+  version: 1.0.0
+  description: API for peeking and replaying failed HL7 messages.
+servers:
+  - url: /replay
+paths:
+  /messages:
+    get:
+      operationId: getFailedMessage
+      summary: Peek next failed message
+      description: Retrieves the next failed message from the failure store and keeps it in the store.
+      responses:
+        "200":
+          description: Message available or failure store is empty
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/FailedMessageInfo"
+                  - $ref: "#/components/schemas/EmptyStoreResponse"
+    post:
+      operationId: replayAllMessages
+      summary: Replay all failed messages
+      description: Replays all currently pending failed messages from the failure store.
+      responses:
+        "200":
+          description: Replay operation completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayResponse"
+  /messages/{messageId}:
+    post:
+      operationId: replayMessageById
+      summary: Replay a failed message by ID
+      description: Replays a specific failed message from the failure store.
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message replayed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayResponse"
+        "404":
+          description: Message not found in failure store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyStoreResponse"
+components:
+  schemas:
+    FailedMessageInfo:
+      type: object
+      required:
+        - id
+        - payload
+      properties:
+        id:
+          type: string
+        payload:
+          description: Raw failed message payload.
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+            - type: string
+            - type: number
+            - type: boolean
+    ReplayResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+        messageId:
+          type: string
+        status:
+          type: string
+    EmptyStoreResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
