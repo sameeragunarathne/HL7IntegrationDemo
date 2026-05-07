@@ -117,6 +117,7 @@ final pipeline:HandlerChain adtPipeline = check new (
         pollingInterval: 10,
         maxRetries: 5,
         retryInterval: 5,
-        deadLetterStore: deadLetterStore
+        deadLetterStore: deadLetterStore,
+        replayStore: replayStore
     }
 );

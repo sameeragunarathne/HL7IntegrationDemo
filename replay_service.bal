@@ -1,34 +1,33 @@
 import ballerina/http;
 import ballerina/log;
 import ballerina/messaging;
-import xlibb/pipeline;
 
 listener http:Listener managementListener = check new (managementApiPort);
 
 service /replay on managementListener {
 
     // GET /replay/messages
-    // Peeks at the next failed message in the failure store without removing it.
+    // Peeks at the next failed message from the failure store without removing it.
     resource function get messages() returns FailedMessageInfo|EmptyStoreResponse|error {
         messaging:Message|error? retrieved = failureStore->retrieve();
         if retrieved is error {
             return retrieved;
         }
         if retrieved is () {
-            return {message: "No failed messages in the store"};
+            return {message: "No failed messages in the failure store"};
         }
         messaging:Message failedMsg = retrieved;
         // Acknowledge with failure=false to put it back (nack) so it stays in the store
         error? ackResult = failureStore->acknowledge(failedMsg.id, success = false);
         if ackResult is error {
-            log:printWarn(string `[Replay] Could not nack message ${failedMsg.id}: ${ackResult.message()}`);
+            log:printWarn(string `[Replay] Could not nack message ${failedMsg.id} in failure store: ${ackResult.message()}`);
         }
         return {id: failedMsg.id, payload: failedMsg.payload};
     }
 
     // POST /replay/messages/[id]
     // Replays a specific failed message by its ID.
-    // The store is polled until the message with the given ID is found (up to maxPeekAttempts).
+    // The failure store is polled until the message with the given ID is found (up to maxPeekAttempts).
     resource function post messages/[string messageId]() returns ReplayResponse|http:NotFound|error {
         int maxPeekAttempts = 100;
         int attempt = 0;
@@ -54,13 +53,13 @@ service /replay on managementListener {
                 foreach string skippedId in skippedIds {
                     log:printInfo(string `[Replay] Returning skipped message ${skippedId} to failure store`);
                 }
-                pipeline:ExecutionSuccess|pipeline:ExecutionError replayResult = adtPipeline.execute(failedMsg.payload);
-                if replayResult is pipeline:ExecutionError {
-                    log:printError(string `[Replay] Replay failed for message ${messageId}: ${replayResult.message()}`, replayResult);
-                    return {message: string `Replay failed for message ${messageId}`, messageId: messageId, status: "failed"};
+                error? replayStoreResult = replayStore->store(failedMsg.payload);
+                if replayStoreResult is error {
+                    log:printError(string `[Replay] Failed to enqueue message ${messageId} to replay store: ${replayStoreResult.message()}`, replayStoreResult);
+                    return {message: string `Failed to enqueue message ${messageId} to replay store`, messageId: messageId, status: "failed"};
                 }
-                log:printInfo(string `[Replay] Successfully replayed message ${messageId}`);
-                return {message: string `Message ${messageId} replayed successfully`, messageId: messageId, status: "success"};
+                log:printInfo(string `[Replay] Enqueued message ${messageId} to replay store`);
+                return {message: string `Message ${messageId} queued for replay successfully`, messageId: messageId, status: "success"};
             }
 
             // Not the target — nack it so it stays in the store and try next
@@ -78,7 +77,7 @@ service /replay on managementListener {
     // POST /replay/messages
     // Replays all currently pending failed messages in the failure store.
     resource function post messages() returns ReplayResponse|error {
-        int replayedCount = 0;
+        int queuedCount = 0;
         int failedCount = 0;
 
         while true {
@@ -97,18 +96,18 @@ service /replay on managementListener {
                 log:printWarn(string `[Replay] Could not acknowledge message ${failedMsg.id}: ${ackResult.message()}`);
             }
 
-            pipeline:ExecutionSuccess|pipeline:ExecutionError replayResult = adtPipeline.execute(failedMsg.payload);
-            if replayResult is pipeline:ExecutionError {
-                log:printError(string `[Replay] Replay failed for message ${failedMsg.id}: ${replayResult.message()}`, replayResult);
+            error? replayStoreResult = replayStore->store(failedMsg.payload);
+            if replayStoreResult is error {
+                log:printError(string `[Replay] Failed to enqueue message ${failedMsg.id} to replay store: ${replayStoreResult.message()}`, replayStoreResult);
                 failedCount += 1;
             } else {
-                log:printInfo(string `[Replay] Successfully replayed message ${failedMsg.id}`);
-                replayedCount += 1;
+                log:printInfo(string `[Replay] Enqueued message ${failedMsg.id} to replay store`);
+                queuedCount += 1;
             }
         }
 
         return {
-            message: string `Replay complete. Succeeded: ${replayedCount}, Failed: ${failedCount}`,
+            message: string `Replay queueing complete. Queued: ${queuedCount}, Failed: ${failedCount}`,
             status: failedCount == 0 ? "success" : "partial"
         };
     }
