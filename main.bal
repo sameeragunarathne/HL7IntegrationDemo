@@ -23,7 +23,7 @@ service class MllpConnectionService {
     }
 
     remote function onBytes(readonly & byte[] data) returns tcp:Error? {
-        log:printInfo(string `[MLLP] Received HL7 message (${data.length()} bytes)`);
+        log:printDebug(string `[MLLP] Received HL7 message (${data.length()} bytes)`);
 
         // Submit the HL7 message to the pipeline asynchronously
         Hl7MessagePayload hl7Payload = {rawMessage: data};
@@ -46,7 +46,7 @@ service class MllpConnectionService {
     }
 
     remote function onClose() {
-        log:printInfo("[MLLP] Connection closed");
+        log:printDebug("[MLLP] Connection closed");
     }
 }
 
