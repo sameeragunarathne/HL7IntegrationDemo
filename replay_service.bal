@@ -8,13 +8,6 @@ const string X_JWT_HEADER = "x-jwt-assertion";
 const string IDP_CLAIMS = "idp_claims";
 const string USERNAME_CLAIM = "username";
 
-log:Config auditLogConfig = {
-    level: log:INFO,
-    format: "json",
-    destinations: [{ path: "./logs/audit.log" }]
-};
-log:Logger auditLogger = check log:fromConfig(auditLogConfig);
-
 function extractReplayUsername(jwt:Payload payload) returns string? {
     if payload.hasKey(IDP_CLAIMS) {
         json idpClaims = <json>payload.get(IDP_CLAIMS);
@@ -61,7 +54,7 @@ function logReplayAudit(http:Request httpRequest, string action, string messageI
     if detail.length() > 0 {
         message = string `${message} Details: ${detail}`;
     }
-    auditLogger.printInfo(message,
+    log:printInfo(message,
         action = action,
         actor = actor,
         messageId = messageId,
