@@ -7,7 +7,7 @@ listener tcp:Listener mllpListener = check new (mllpListenerPort);
 
 service on mllpListener {
     remote function onConnect(tcp:Caller caller) returns tcp:ConnectionService|tcp:Error? {
-        log:printInfo(string `[MLLP] New connection from client`);
+        log:printDebug(string `[MLLP] New connection from client`);
         return new MllpConnectionService(caller);
     }
 }
@@ -25,12 +25,20 @@ service class MllpConnectionService {
     remote function onBytes(readonly & byte[] data) returns tcp:Error? {
         log:printDebug(string `[MLLP] Received HL7 message (${data.length()} bytes)`);
 
+        string msgControlId = "UNKNOWN";
+        string|error controlIdResult = extractMessageControlId(data);
+        if controlIdResult is string {
+            msgControlId = controlIdResult;
+        } else {
+            log:printWarn(string `EHR-Integration: Unable to extract message control ID. ${controlIdResult.message()}`);
+        }
+
         // Submit the HL7 message to the pipeline asynchronously
         Hl7MessagePayload hl7Payload = {rawMessage: data};
         _ = start processHl7Message(hl7Payload);
 
         // Send MLLP ACK back to the sender
-        byte[]|error ackBytes = buildMllpAck("ACK_CTRL_ID", "AA");
+        byte[]|error ackBytes = buildMllpAck(msgControlId);
         if ackBytes is error {
             logFailure("MLLP ACK", ackBytes);
             return;
@@ -38,7 +46,10 @@ service class MllpConnectionService {
         tcp:Error? sendResult = self.caller->writeBytes(ackBytes);
         if sendResult is tcp:Error {
             logFailure("MLLP ACK send", sendResult);
+            return sendResult;
         }
+        log:printInfo(string `EHR-Integration: ACK sent to CompuLink EHR (Control ID: ${msgControlId})`);
+        log:printInfo("EHR-Integration: -- Pipeline complete --------------------------------");
     }
 
     remote function onError(tcp:Error err) {
