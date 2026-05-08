@@ -5,58 +5,54 @@ import ballerina/messaging;
 
 listener http:Listener managementListener = check new (managementApiPort);
 const string X_JWT_HEADER = "x-jwt-assertion";
-const string IDP_CLAIMS = "idp_claims";
-const string USERNAME_CLAIM = "username";
+const string ENDUSER_CLAIM = "http://wso2.org/claims/enduser";
+const string APPLICATION_ID_CLAIM = "http://wso2.org/claims/applicationid";
 
-function extractReplayUsername(jwt:Payload payload) returns string? {
-    if payload.hasKey(IDP_CLAIMS) {
-        json idpClaims = <json>payload.get(IDP_CLAIMS);
-        if idpClaims is map<json> && idpClaims.hasKey(USERNAME_CLAIM) {
-            json username = idpClaims.get(USERNAME_CLAIM);
-            if username is string {
-                return username;
-            }
-        }
-    }
-    if payload.hasKey(USERNAME_CLAIM) {
-        json username = <json>payload.get(USERNAME_CLAIM);
-        if username is string {
-            return username;
-        }
-    }
-    if payload.hasKey("sub") {
-        json subject = <json>payload.get("sub");
-        if subject is string {
-            return subject;
+type ReplayAuditContext record {|
+    string actor;
+    string applicationId;
+|};
+
+function extractClaim(jwt:Payload payload, string claim) returns string? {
+    if payload.hasKey(claim) {
+        json claimValue = <json>payload.get(claim);
+        if claimValue is string {
+            return claimValue;
         }
     }
     return ();
 }
 
-function getReplayActor(http:Request httpRequest) returns string {
+function getReplayAuditContext(http:Request httpRequest) returns ReplayAuditContext {
+    ReplayAuditContext auditContext = {actor: "unknown", applicationId: "unknown"};
     string|error jwtAssertion = httpRequest.getHeader(X_JWT_HEADER);
     if jwtAssertion is string {
         [jwt:Header, jwt:Payload]|error headerPayload = jwt:decode(jwtAssertion);
         if headerPayload is [jwt:Header, jwt:Payload] {
             [jwt:Header, jwt:Payload] [_, payload] = headerPayload;
-            string? username = extractReplayUsername(payload);
-            if username is string {
-                return username;
+            string? actor = extractClaim(payload, ENDUSER_CLAIM);
+            if actor is string {
+                auditContext.actor = actor;
+            }
+            string? applicationId = extractClaim(payload, APPLICATION_ID_CLAIM);
+            if applicationId is string {
+                auditContext.applicationId = applicationId;
             }
         }
     }
-    return "unknown";
+    return auditContext;
 }
 
 function logReplayAudit(http:Request httpRequest, string action, string messageId, string status, string detail = "") {
-    string actor = getReplayActor(httpRequest);
-    string message = string `[AUDIT] User '${actor}' performed '${action}' for message '${messageId}' with status '${status}'.`;
+    ReplayAuditContext auditContext = getReplayAuditContext(httpRequest);
+    string message = string `[AUDIT] User '${auditContext.actor}' from application '${auditContext.applicationId}' performed '${action}' for message '${messageId}' with status '${status}'.`;
     if detail.length() > 0 {
         message = string `${message} Details: ${detail}`;
     }
     log:printInfo(message,
         action = action,
-        actor = actor,
+        actor = auditContext.actor,
+        applicationId = auditContext.applicationId,
         messageId = messageId,
         status = status,
         detail = detail
