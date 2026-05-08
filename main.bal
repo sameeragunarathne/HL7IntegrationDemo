@@ -25,6 +25,13 @@ service class MllpConnectionService {
     remote function onBytes(readonly & byte[] data) returns tcp:Error? {
         log:printDebug(string `[MLLP] Received HL7 message (${data.length()} bytes)`);
 
+        string|error hl7Message = extractHl7String(data);
+        if hl7Message is string {
+            log:printInfo("EHR-Integration: Received HL7 message", hl7 = hl7Message);
+        } else {
+            log:printWarn(string `EHR-Integration: Failed to decode HL7 message. ${hl7Message.message()}`);
+        }
+
         string msgControlId = "UNKNOWN";
         string|error controlIdResult = extractMessageControlId(data);
         if controlIdResult is string {
